@@ -1,0 +1,28 @@
+{
+  "_comment": "Merge the mcpServers block into your claude_desktop_config.json",
+  "_locations": {
+    "macOS": "~/Library/Application Support/Claude/claude_desktop_config.json",
+    "windows": "%APPDATA%\\Claude\\claude_desktop_config.json"
+  },
+  "mcpServers": {
+    "stacklit": {
+      "command": "stacklit",
+      "args": ["serve"],
+      "_comment": "Stacklit MCP — codebase navigation. Run 'npx stacklit@0.3.0 init --hook' in your project first."
+    },
+    "duostack": {
+      "command": "node",
+      "args": [
+        "/path/to/duostack-core/dist/cli/index.js",
+        "serve",
+        "--project",
+        "/path/to/your-project",
+        "--mcp"
+      ],
+      "env": {
+        "DUOSTACK_PROJECT_PATH": "/path/to/your-project"
+      },
+      "_comment": "Duostack MCP — 19 coordination tools (ds_orient, ds_plan_step, etc.). Replace paths above."
+    }
+  }
+}

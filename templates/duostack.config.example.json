@@ -1,0 +1,64 @@
+{
+  "version": "0.1.0",
+  "stacklitVersion": "0.3.0",
+  "projectPath": "/path/to/your-project",
+  "stateDir": "/path/to/your-project/.duostack/state",
+
+  "api": {
+    "port": 3747,
+    "host": "127.0.0.1"
+  },
+
+  "leases": {
+    "durationMinutes": 20,
+    "renewalThresholdMinutes": 5,
+    "maxAttempts": 5
+  },
+
+  "agents": {
+    "claude": {
+      "role": "planner",
+      "fallbackRole": "executor",
+      "leaseExtensionEnabled": true,
+      "backoffSteps": {
+        "3": 300000,
+        "10": 3600000,
+        "50": 21600000
+      }
+    },
+    "antigravity": {
+      "role": "executor",
+      "fallbackRole": "tactical-planner",
+      "leaseExtensionEnabled": true,
+      "backoffSteps": {
+        "3": 300000,
+        "10": 3600000,
+        "50": 21600000
+      }
+    }
+  },
+
+  "orchestrator": {
+    "pollIntervalMs": 30000,
+    "debounceMs": 500,
+    "fileWatchEnabled": true
+  },
+
+  "stacklit": {
+    "jsonPath": "/path/to/your-project/stacklit.json",
+    "enabled": true,
+    "fullIndexTokenBudget": 4000,
+    "deriveMapTokenBudget": 250
+  },
+
+  "efficiency": {
+    "trackingEnabled": true,
+    "logPath": "/path/to/your-project/.duostack/efficiency.json"
+  },
+
+  "checkpoints": {
+    "afterEachDecision": true,
+    "afterTaskBatch": true,
+    "intervalOperations": 10
+  }
+}
