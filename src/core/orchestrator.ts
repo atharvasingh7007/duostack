@@ -454,5 +454,6 @@ export async function createOrchestrator(
   config: OrchestratorConfig
 ): Promise<Orchestrator> {
   const orchestrator = new Orchestrator(config);
+  await orchestrator.initOnly();
   return orchestrator;
 }

@@ -239,14 +239,11 @@ program
     // Create efficiency tracker (initialized after orchestrator start)
     const { createEfficiencyTracker } = await import("../core/efficiency-tracker.js");
 
-    // Start API server (pass stacklit + efficiency)
-    const { createEventStore } = await import("../core/event-store.js");
-    // Efficiency tracker needs the store — we'll create it after orchestrator starts
-    // For now pass undefined, update after start
-    startApiServer(orchestrator, port, stacklit, undefined, opts.host || config.api.host);
-
     // Start orchestrator (begins polling + file watching)
     await orchestrator.start();
+
+    // Start API server (pass stacklit + efficiency)
+    startApiServer(orchestrator, port, stacklit, undefined, opts.host || config.api.host);
 
     // Now wire efficiency tracker using the live store
     const efficiencyTracker = createEfficiencyTracker(
@@ -344,8 +341,8 @@ program
         const { createStacklitBridge } = await import("../core/stacklit-bridge.js");
         const stacklit = createStacklitBridge(config);
 
-        startApiServer(orchestrator, port, stacklit, undefined, opts.host);
         await orchestrator.start();
+        startApiServer(orchestrator, port, stacklit, undefined, opts.host);
         console.error(`[mcp] Background orchestrator started on ${baseUrl}`);
       } else {
         console.error(`[mcp] Warning: ${stateDir} not found. Run 'duostack init --project ${projectPath}' first.`);

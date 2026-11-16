@@ -307,7 +307,11 @@ export function snapshotRouter(orchestrator: Orchestrator): Router {
         snapshotAge: tasks.generatedAt,
       });
     } catch (err) {
-      res.status(500).json({ error: "Failed to build orientation" });
+      console.error("[api] orientation error:", err);
+      res.status(500).json({
+        error: "Failed to build orientation",
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
   });
 
