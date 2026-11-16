@@ -93,6 +93,9 @@ program
     // Write Claude Desktop MCP config snippet
     await writeClaudeConfig(duostackDir, projectPath);
 
+    // Write Antigravity MCP config snippet
+    await writeAntigravityConfig(duostackDir, projectPath);
+
     // Write .gitignore additions
     await writeGitignore(projectPath);
 
@@ -145,6 +148,9 @@ program
 
     console.log(`\n✓ Claude Desktop MCP config: ${path.join(duostackDir, "claude-mcp.json")}`);
     console.log(`  → Merge mcpServers block into your claude_desktop_config.json`);
+    console.log(`\n✓ Antigravity MCP config: ${path.join(duostackDir, "antigravity-mcp.json")}`);
+    console.log(`  → Merge mcpServers block into your Antigravity mcp.json or .gemini/settings.json`);
+    console.log(`\n✓ Antigravity rules: AGENTS.md updated in ${projectPath}`);
 
     console.log(`\nNext steps:`);
     console.log(`  1. npx stacklit@${opts.stacklitVersion} init --hook`);
@@ -261,18 +267,92 @@ program
 
     // Optionally start MCP server
     if (opts.mcp) {
-      console.log("[cli] starting MCP server for Claude Desktop...");
+      console.log = (...args: unknown[]) => console.error(...args);
+      console.info = (...args: unknown[]) => console.error(...args);
+      process.env["DUOSTACK_PROJECT_PATH"] = projectPath;
+      process.env["DUOSTACK_PORT"] = String(port);
+      process.env["DUOSTACK_HOST"] = opts.host || config.api.host;
+      console.error("[cli] starting MCP server for Claude Desktop / Antigravity over stdio...");
       startMcpServer().catch((err) => {
         console.error("[mcp] server error:", err);
       });
+    } else {
+      console.log(`\nDuostack running:`);
+      console.log(`  API:       http://${opts.host || config.api.host}:${port}`);
+      console.log(`  Dashboard: http://${opts.host || config.api.host}:${port}/dashboard`);
+      console.log(`  Stacklit:  ${stacklitAvailable ? "✓ available" : "✗ not found"}`);
+      console.log(`  MCP:       run with --mcp or 'duostack mcp' to enable`);
+      console.log(`\nPress Ctrl+C to stop.\n`);
+    }
+  });
+
+// ─── mcp ───────────────────────────────────────────────────────────────────────
+
+program
+  .command("mcp")
+  .description("Start the MCP server over stdio for Claude Desktop or Antigravity")
+  .option("--project <path>", "Path to the project repo", process.env["DUOSTACK_PROJECT_PATH"] || process.cwd())
+  .option("--port <number>", "API server port to connect to", String(DEFAULT_PORT))
+  .option("--host <string>", "API server host", process.env["DUOSTACK_HOST"] || process.env["HOST"] || "127.0.0.1")
+  .option("--agent <name>", "Agent ID (claude | antigravity)", process.env["DUOSTACK_AGENT_ID"] || "claude")
+  .action(async (opts: {
+    project: string;
+    port: string;
+    host: string;
+    agent: string;
+  }) => {
+    // Stdio MCP protocol requires stdout to contain ONLY JSON-RPC.
+    // Divert console.log/info to stderr.
+    console.log = (...args: unknown[]) => console.error(...args);
+    console.info = (...args: unknown[]) => console.error(...args);
+
+    const projectPath = path.resolve(opts.project);
+    process.env["DUOSTACK_PROJECT_PATH"] = projectPath;
+    process.env["DUOSTACK_AGENT_ID"] = opts.agent;
+    process.env["DUOSTACK_PORT"] = opts.port;
+    process.env["DUOSTACK_HOST"] = opts.host;
+
+    const port = parseInt(opts.port, 10);
+    const baseUrl = `http://${opts.host}:${port}`;
+    let apiRunning = false;
+
+    try {
+      const res = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(1000) });
+      if (res.ok) apiRunning = true;
+    } catch {
+      apiRunning = false;
     }
 
-    console.log(`\nDuostack running:`);
-    console.log(`  API:       http://127.0.0.1:${port}`);
-    console.log(`  Dashboard: http://127.0.0.1:${port}/dashboard`);
-    console.log(`  Stacklit:  ${stacklitAvailable ? "✓ available" : "✗ not found"}`);
-    console.log(`  MCP:       ${opts.mcp ? "running (stdio)" : "run with --mcp to enable"}`);
-    console.log(`\nPress Ctrl+C to stop.\n`);
+    if (!apiRunning) {
+      console.error(`[mcp] API server not running on ${baseUrl} — auto-starting background orchestrator...`);
+      const stateDir = path.join(projectPath, ".duostack", "state");
+      const stacklitPath = path.join(projectPath, "stacklit.json");
+
+      if (fs.existsSync(stateDir)) {
+        const { loadConfig } = await import("../core/config.js");
+        const config = await loadConfig(projectPath);
+        config.api.port = port;
+        config.api.host = opts.host;
+
+        const { createOrchestrator } = await import("../core/orchestrator.js");
+        const orchestrator = await createOrchestrator({
+          projectPath,
+          stateDir,
+          stacklitPath,
+        });
+
+        const { createStacklitBridge } = await import("../core/stacklit-bridge.js");
+        const stacklit = createStacklitBridge(config);
+
+        startApiServer(orchestrator, port, stacklit, undefined, opts.host);
+        await orchestrator.start();
+        console.error(`[mcp] Background orchestrator started on ${baseUrl}`);
+      } else {
+        console.error(`[mcp] Warning: ${stateDir} not found. Run 'duostack init --project ${projectPath}' first.`);
+      }
+    }
+
+    await startMcpServer();
   });
 
 // ─── status ───────────────────────────────────────────────────────────────────
@@ -598,6 +678,29 @@ ${projectPath}
 `,
     "utf-8"
   );
+
+  // Also update workspace AGENTS.md so Antigravity automatically picks up these rules
+  const agentsMdPath = path.join(projectPath, "AGENTS.md");
+  const marker = "<!-- duostack-agent-rules -->";
+  const section = `\n${marker}\n# DuoStack Coordination\n` +
+    `You are the **executor and tester** in this two-agent system alongside Claude Desktop.\n` +
+    `- Call \`ds_orient\` or \`GET http://127.0.0.1:${DEFAULT_PORT}/snapshot/orientation?agent=antigravity\` at start of session.\n` +
+    `- Before executing any unit of work: record intent via \`ds_plan_step\`.\n` +
+    `- After execution and validation: record results via \`ds_complete_step\`.\n` +
+    `- Full details: see \`.duostack/antigravity/rules.md\`\n`;
+
+  try {
+    if (fs.existsSync(agentsMdPath)) {
+      const existing = await fsPromises.readFile(agentsMdPath, "utf-8");
+      if (!existing.includes(marker)) {
+        await fsPromises.appendFile(agentsMdPath, section, "utf-8");
+      }
+    } else {
+      await fsPromises.writeFile(agentsMdPath, section.trim() + "\n", "utf-8");
+    }
+  } catch {
+    // Non-fatal
+  }
 }
 
 async function writeAntigravitySkills(skillsDir: string): Promise<void> {
@@ -707,6 +810,30 @@ Also use when validation fails — record it so Claude can see what happened.
 `,
     "utf-8"
   );
+
+  // Modern Antigravity SKILL.md bundle
+  const bundleDir = path.join(skillsDir, "duostack");
+  await fsPromises.mkdir(bundleDir, { recursive: true });
+  await fsPromises.writeFile(
+    path.join(bundleDir, "SKILL.md"),
+    `---
+name: duostack
+description: Multi-agent coordination skill for Antigravity (orient, claim_task, plan_step, complete_step).
+---
+
+# DuoStack Orchestration Skill
+
+Use this skill when collaborating with Claude Desktop on tasks managed by DuoStack.
+
+## Lifecycle Workflow
+1. **Orient:** Check session status and active assignments via \`ds_orient\` or HTTP \`GET /snapshot/orientation?agent=antigravity\`.
+2. **Claim:** Claim assigned tasks via \`ds_claim_task\` or \`POST /tasks/:taskId/claim\`.
+3. **Plan Step (Intent First):** Write step intent before touching any code with \`ds_plan_step\` or \`POST /tasks/:taskId/progress\`.
+4. **Execute & Test:** Make the code modifications and run local verification tests.
+5. **Complete Step:** Record results, modified files, and git hashes with \`ds_complete_step\` or \`POST /tasks/:taskId/complete\`.
+`,
+    "utf-8"
+  );
 }
 
 async function writeClaudeConfig(
@@ -717,34 +844,66 @@ async function writeClaudeConfig(
     _comment: "Merge the mcpServers block into your claude_desktop_config.json",
     mcpServers: {
       stacklit: {
-        command: "stacklit",
-        args: ["serve"],
-        _comment: "Stacklit MCP — codebase navigation (run: npx stacklit@0.3.0 init first)",
+        command: "npx",
+        args: ["-y", "stacklit@0.3.0", "serve"],
+        _comment: "Stacklit MCP — codebase navigation",
       },
       duostack: {
-        command: "node",
+        command: "npx",
         args: [
-          path.join(
-            path.dirname(path.dirname(duostackDir)),
-            "node_modules",
-            ".bin",
-            "duostack"
-          ),
-          "serve",
+          "-y",
+          "duostack-core",
+          "mcp",
           "--project",
           projectPath,
-          "--mcp",
+          "--agent",
+          "claude",
         ],
         env: {
           DUOSTACK_PROJECT_PATH: projectPath,
+          DUOSTACK_AGENT_ID: "claude",
         },
-        _comment: "Duostack MCP — orchestration tools (ds_orient, ds_plan_step, etc.)",
+        _comment: "Duostack MCP — orchestration tools (ds_orient, ds_create_task, ds_plan_step, etc.)",
       },
     },
   };
 
   await fsPromises.writeFile(
     path.join(duostackDir, "claude-mcp.json"),
+    JSON.stringify(config, null, 2),
+    "utf-8"
+  );
+}
+
+async function writeAntigravityConfig(
+  duostackDir: string,
+  projectPath: string
+): Promise<void> {
+  const config = {
+    _comment: "Merge the mcpServers block into your Antigravity mcp.json or .gemini/settings.json",
+    mcpServers: {
+      duostack: {
+        command: "npx",
+        args: [
+          "-y",
+          "duostack-core",
+          "mcp",
+          "--project",
+          projectPath,
+          "--agent",
+          "antigravity",
+        ],
+        env: {
+          DUOSTACK_PROJECT_PATH: projectPath,
+          DUOSTACK_AGENT_ID: "antigravity",
+        },
+        _comment: "Duostack MCP for Antigravity — orchestration tools (ds_orient, ds_claim_task, ds_complete_step, etc.)",
+      },
+    },
+  };
+
+  await fsPromises.writeFile(
+    path.join(duostackDir, "antigravity-mcp.json"),
     JSON.stringify(config, null, 2),
     "utf-8"
   );

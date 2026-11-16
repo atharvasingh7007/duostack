@@ -7,11 +7,9 @@ export default defineConfig({
     // Run tests sequentially — some tests bind ports or write to disk
     // and parallel execution causes false failures
     pool: "forks",
-    poolOptions: {
-      forks: {
-        singleFork: false,
-        maxForks: 4,
-      },
+    forks: {
+      singleFork: false,
+      maxForks: 4,
     },
     // Longer timeout for server integration tests
     testTimeout: 15_000,
@@ -19,7 +17,7 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "lcov", "html"],
       include: ["src/core/**", "src/api/**", "src/mcp/**"],
-      exclude: ["src/__tests__/**", "src/cli/**"],
+      exclude: ["src/__tests__/**", "src/cli/**", "src/core/index.ts"],
       thresholds: {
         lines: 70,
         functions: 70,

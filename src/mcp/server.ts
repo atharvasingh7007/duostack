@@ -47,12 +47,22 @@ import { DEFAULT_PORT } from "../api/server.js";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const API_BASE = `http://127.0.0.1:${DEFAULT_PORT}`;
-const AGENT_ID = "claude";
+export function getApiBase(): string {
+  const host = process.env["DUOSTACK_HOST"] || process.env["HOST"] || "127.0.0.1";
+  const port = process.env["DUOSTACK_PORT"] || process.env["PORT"] || String(DEFAULT_PORT);
+  return `http://${host}:${port}`;
+}
+
+export function getAgentId(override?: unknown): string {
+  if (typeof override === "string" && override.trim().length > 0) {
+    return override.trim();
+  }
+  return process.env["DUOSTACK_AGENT_ID"] || "claude";
+}
 
 // ─── Tool definitions ─────────────────────────────────────────────────────────
 
-const TOOLS = [
+export const TOOLS = [
   {
     name: "ds_orient",
     description:
@@ -504,12 +514,12 @@ const TOOLS = [
 
 // ─── API call helper ──────────────────────────────────────────────────────────
 
-async function apiCall(
+export async function apiCall(
   method: "GET" | "POST",
   endpoint: string,
   body?: unknown
 ): Promise<unknown> {
-  const url = `${API_BASE}${endpoint}`;
+  const url = `${getApiBase()}${endpoint}`;
 
   const options: RequestInit = {
     method,
@@ -534,7 +544,7 @@ async function apiCall(
 
 // ─── Tool handlers ────────────────────────────────────────────────────────────
 
-async function handleTool(
+export async function handleTool(
   name: string,
   args: Record<string, unknown>
 ): Promise<string> {
@@ -544,18 +554,20 @@ async function handleTool(
     // ── ds_orient ────────────────────────────────────────────────────────────
 
     case "ds_orient": {
-      const data = await apiCall("GET", `/snapshot/orientation?agent=${AGENT_ID}`);
+      const agent = getAgentId(args["agent"]);
+      const data = await apiCall("GET", `/snapshot/orientation?agent=${agent}`);
       return JSON.stringify(data, null, 2);
     }
 
     // ── ds_read_snapshot ─────────────────────────────────────────────────────
 
     case "ds_read_snapshot": {
+      const agent = getAgentId(args["agent"]);
       const scope = args["scope"] ?? "active";
       const limit = args["limit"] ?? 20;
       const data = await apiCall(
         "GET",
-        `/snapshot/tasks?scope=${scope}&agent=${AGENT_ID}&limit=${limit}`
+        `/snapshot/tasks?scope=${scope}&agent=${agent}&limit=${limit}`
       );
       return JSON.stringify(data, null, 2);
     }
@@ -563,9 +575,10 @@ async function handleTool(
     // ── ds_create_task ───────────────────────────────────────────────────────
 
     case "ds_create_task": {
+      const actor = getAgentId(args["agent"] || args["actor"]);
       const data = await apiCall("POST", "/events", {
         eventType: "TaskCreated",
-        actor: AGENT_ID,
+        actor,
         taskId: args["taskId"],
         payload: {
           taskId: args["taskId"],
@@ -585,10 +598,11 @@ async function handleTool(
     // ── ds_claim_task ────────────────────────────────────────────────────────
 
     case "ds_claim_task": {
+      const agent = getAgentId(args["agent"]);
       const data = await apiCall(
         "POST",
         `/tasks/${args["taskId"]}/claim`,
-        { agent: AGENT_ID }
+        { agent }
       );
       return JSON.stringify(data, null, 2);
     }
@@ -596,11 +610,12 @@ async function handleTool(
     // ── ds_plan_step ─────────────────────────────────────────────────────────
 
     case "ds_plan_step": {
+      const agent = getAgentId(args["agent"]);
       const data = await apiCall(
         "POST",
         `/tasks/${args["taskId"]}/progress`,
         {
-          agent: AGENT_ID,
+          agent,
           step: {
             stepId: args["stepId"],
             stepNumber: args["stepNumber"],
@@ -619,11 +634,12 @@ async function handleTool(
     // ── ds_complete_step ─────────────────────────────────────────────────────
 
     case "ds_complete_step": {
+      const agent = getAgentId(args["agent"]);
       const data = await apiCall(
         "POST",
         `/tasks/${args["taskId"]}/complete`,
         {
-          agent: AGENT_ID,
+          agent,
           stepId: args["stepId"],
           actualFilesChanged: args["actualFilesChanged"],
           gitDiffHash: args["gitDiffHash"] ?? null,
@@ -638,11 +654,12 @@ async function handleTool(
     // ── ds_block_task ────────────────────────────────────────────────────────
 
     case "ds_block_task": {
+      const agent = getAgentId(args["agent"]);
       const data = await apiCall(
         "POST",
         `/tasks/${args["taskId"]}/block`,
         {
-          agent: AGENT_ID,
+          agent,
           reason: args["reason"],
           suggestedResolution: args["suggestedResolution"] ?? null,
         }
@@ -653,12 +670,14 @@ async function handleTool(
     // ── ds_request_handoff ───────────────────────────────────────────────────
 
     case "ds_request_handoff": {
+      const agent = getAgentId(args["agent"]);
+      const toAgent = args["toAgent"] ?? (agent === "claude" ? "antigravity" : "claude");
       const data = await apiCall(
         "POST",
         `/tasks/${args["taskId"]}/handoff`,
         {
-          agent: AGENT_ID,
-          toAgent: "antigravity",
+          agent,
+          toAgent,
           reason: args["reason"],
           contextForFallback: args["contextForFallback"],
           doNotTouch: args["doNotTouch"] ?? [],
@@ -670,10 +689,11 @@ async function handleTool(
     // ── ds_record_decision ───────────────────────────────────────────────────
 
     case "ds_record_decision": {
+      const actor = getAgentId(args["agent"] || args["actor"]);
       // Write to events.jsonl
       const eventData = await apiCall("POST", "/events", {
         eventType: "DecisionRecorded",
-        actor: AGENT_ID,
+        actor,
         payload: {
           decisionId: args["decisionId"],
           title: args["title"],
@@ -704,9 +724,11 @@ async function handleTool(
     // ── ds_checkpoint ────────────────────────────────────────────────────────
 
     case "ds_checkpoint": {
+      const agent = getAgentId(args["agent"]);
       await orchestratorCheckpoint(
         args["summary"] as string,
-        args["milestone"] as string
+        args["milestone"] as string,
+        agent
       );
       return JSON.stringify({
         checkpointed: true,
@@ -719,8 +741,9 @@ async function handleTool(
     // ── ds_agent_status ──────────────────────────────────────────────────────
 
     case "ds_agent_status": {
+      const agent = getAgentId(args["agent"]);
       const data = await apiCall("POST", "/agents/status", {
-        agent: AGENT_ID,
+        agent,
         health: args["health"],
         reason: args["reason"],
       });
@@ -795,8 +818,9 @@ async function handleTool(
     // ── ds_handoff_all ───────────────────────────────────────────────────────
 
     case "ds_handoff_all": {
+      const agent = getAgentId(args["agent"]);
       const data = await apiCall("POST", "/handoff/request", {
-        fromAgent: AGENT_ID,
+        fromAgent: agent,
         reason: args["reason"],
         contextForFallback: args["contextForFallback"] ?? "",
       });
@@ -806,8 +830,9 @@ async function handleTool(
     // ── ds_recover ───────────────────────────────────────────────────────────
 
     case "ds_recover": {
+      const agent = getAgentId(args["agent"]);
       const data = await apiCall("POST", "/handoff/recover", {
-        agent: AGENT_ID,
+        agent,
         reason: args["reason"],
       });
       return JSON.stringify(data, null, 2);
@@ -874,17 +899,18 @@ async function appendToDecisions(
 
 async function orchestratorCheckpoint(
   summary: string,
-  milestone: string
+  milestone: string,
+  actor: string = getAgentId()
 ): Promise<void> {
   await apiCall("POST", "/events", {
     eventType: "ProjectCheckpointWritten",
-    actor: AGENT_ID,
+    actor,
     payload: {
       triggeredBy: "scheduled",
       currentMilestone: milestone,
       openTaskCount: 0, // orchestrator will reconcile on next rebuild
       completedTaskCount: 0,
-      activeAgent: AGENT_ID,
+      activeAgent: actor,
       summary,
     },
   });
