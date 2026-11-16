@@ -1,3 +1,41 @@
-.committer/
+# Build output
+dist/
+*.tsbuildinfo
+
+# Dependencies
+node_modules/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Environment
 .env
 .env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Duostack runtime files (these belong in project repos, not this repo)
+.duostack/state/.orchestrator.lock
+.duostack/state/.events.lock
+.duostack/state/*.tmp
+.duostack/state/efficiency.json
+.duostack/state/agents.snapshot.json
+.duostack/state/project.snapshot.json
+.duostack/state/tasks.snapshot.json
+backups/
+.previous_tag
+
+# Stacklit generated (not source)
+stacklit.html

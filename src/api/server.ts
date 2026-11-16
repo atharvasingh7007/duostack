@@ -99,15 +99,16 @@ export function startApiServer(
   orchestrator: Orchestrator,
   port: number = DEFAULT_PORT,
   stacklit?: StacklitBridge,
-  efficiency?: EfficiencyTracker
+  efficiency?: EfficiencyTracker,
+  host: string = process.env["DUOSTACK_HOST"] || process.env["HOST"] || "127.0.0.1"
 ): void {
   const app = createApiServer(orchestrator, stacklit, efficiency);
 
-  app.listen(port, "127.0.0.1", () => {
-    console.log(`[api] listening on http://127.0.0.1:${port}`);
-    console.log(`[api] dashboard → http://127.0.0.1:${port}/dashboard`);
+  app.listen(port, host, () => {
+    console.log(`[api] listening on http://${host}:${port}`);
+    console.log(`[api] dashboard → http://${host}:${port}/dashboard`);
     console.log(`[api] agents connect via:`);
     console.log(`[api]   Claude  → MCP server (wraps this API)`);
-    console.log(`[api]   Antigravity → skills call http://127.0.0.1:${port}`);
+    console.log(`[api]   Antigravity → skills call http://${host}:${port}`);
   });
 }

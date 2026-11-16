@@ -160,11 +160,13 @@ program
   .description("Start the Duostack orchestrator, API server, and MCP server")
   .requiredOption("--project <path>", "Path to the project repo")
   .option("--port <number>", "API server port", String(DEFAULT_PORT))
+  .option("--host <string>", "API server host", process.env["DUOSTACK_HOST"] || process.env["HOST"] || "127.0.0.1")
   .option("--mcp", "Also start the MCP server (for Claude Desktop)", false)
   .option("--skip-preflight", "Skip preflight checks", false)
   .action(async (opts: {
     project: string;
     port: string;
+    host: string;
     mcp: boolean;
     skipPreflight: boolean;
   }) => {
@@ -235,7 +237,7 @@ program
     const { createEventStore } = await import("../core/event-store.js");
     // Efficiency tracker needs the store — we'll create it after orchestrator starts
     // For now pass undefined, update after start
-    startApiServer(orchestrator, port, stacklit);
+    startApiServer(orchestrator, port, stacklit, undefined, opts.host || config.api.host);
 
     // Start orchestrator (begins polling + file watching)
     await orchestrator.start();

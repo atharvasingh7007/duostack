@@ -23,7 +23,7 @@ import fs from "node:fs";
 import fsPromises from "node:fs/promises";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { v4 as uuidv4 } from "uuid";
+import crypto from "node:crypto";
 import type { DuostackEvent, EventType, BaseEvent } from "../schemas/event.schema.js";
 import type { AgentId } from "../schemas/agent.schema.js";
 
@@ -146,7 +146,7 @@ export class EventStore {
   ): Promise<DuostackEvent[]> {
     await this.ensureInitialized();
 
-    const sharedCorrelationId = correlationId ?? uuidv4();
+    const sharedCorrelationId = correlationId ?? crypto.randomUUID();
     const events = eventInputs.map((input) =>
       this.buildEvent({ ...input, correlationId: sharedCorrelationId })
     );
@@ -336,12 +336,12 @@ export class EventStore {
    */
   private buildEvent(input: AppendEventInput): DuostackEvent {
     const base: BaseEvent = {
-      eventId: uuidv4(),
+      eventId: crypto.randomUUID(),
       eventType: input.eventType,
       timestamp: new Date().toISOString(),
       actor: input.actor,
       taskId: input.taskId !== undefined ? input.taskId : null,
-      correlationId: input.correlationId !== undefined ? input.correlationId : uuidv4(),
+      correlationId: input.correlationId !== undefined ? input.correlationId : crypto.randomUUID(),
       schemaVersion: "1.0",
     };
 
